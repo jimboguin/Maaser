@@ -1283,7 +1283,7 @@
   }
   async function shareBackup(file){
     if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:file.name});
+      await navigator.share({files:[file]});
     } else {
       const a=document.createElement("a"); a.href=URL.createObjectURL(file); a.download=file.name;
       document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 4000);
