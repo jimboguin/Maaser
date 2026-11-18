@@ -596,21 +596,125 @@
   // ---------- reading the transfer screenshot ----------
   let sample=null, canReadImages=false, scanCtl=null;
   const METHODS=["Bank transfer","Yappy","ACH","Cash","Check","Credit / debit card","Other"];
+  // ---------- on-phone transfer reading (Tesseract OCR, no account) ----------
+  let ocrWorkerP = null;
+  function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=()=>rej(new Error("load")); document.head.appendChild(s); }); }
+  async function ocrWorker(onStatus){
+    if(!ocrWorkerP){
+      ocrWorkerP = (async()=>{
+        if(!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");
+        if(!window.Tesseract || !window.Tesseract.createWorker) throw new Error("reader not available");
+        return await window.Tesseract.createWorker(["spa","eng"], 1, { logger: m => { if(ocrLogger) ocrLogger(m); } });
+      })();
+      ocrWorkerP.catch(()=>{ ocrWorkerP=null; });
+    }
+    return ocrWorkerP;
+  }
+  let ocrLogger = null;
+  // screenshots are often small text on colour: enlarge and greyscale before reading
+  async function prepImage(file){
+    try{
+      const bmp = await createImageBitmap(file);
+      const scale = Math.max(1, Math.min(2.5, 1600/Math.max(bmp.width,bmp.height)));
+      const c=document.createElement("canvas"); c.width=Math.round(bmp.width*scale); c.height=Math.round(bmp.height*scale);
+      const g=c.getContext("2d"); g.filter="grayscale(1) contrast(1.3)"; g.drawImage(bmp,0,0,c.width,c.height);
+      return c;
+    }catch(e){ return file; }
+  }
+  async function readTransferLocal(file, signal, onProgress){
+    ocrLogger = m => { if(m && m.status && onProgress) onProgress(m.status, m.progress||0); };
+    const w = await ocrWorker();
+    if(signal && signal.aborted) throw {code:"cancelled"};
+    const img = await prepImage(file);
+    const { data } = await w.recognize(img);
+    if(signal && signal.aborted) throw {code:"cancelled"};
+    return parseTransferText(data && data.text || "");
+  }
+
+  const MONTHS = {ene:1,jan:1,feb:2,mar:3,abr:4,apr:4,may:5,jun:6,jul:7,ago:8,aug:8,sep:9,set:9,oct:10,nov:11,dic:12,dec:12};
+  function toNum(s){
+    s=s.replace(/\s/g,"");
+    if(/^\d{1,3}(\.\d{3})+,\d{2}$/.test(s) || /^\d+,\d{2}$/.test(s)) s=s.replace(/\./g,"").replace(",",".");
+    else s=s.replace(/,/g,"");
+    const n=parseFloat(s); return isFinite(n)?n:NaN;
+  }
+  function parseTransferText(raw){
+    const text = raw.replace(/\r/g,"");
+    const lines = text.split("\n").map(x=>x.trim()).filter(Boolean);
+    const low = text.toLowerCase();
+    const out = {amount:null,date:null,recipient:null,method:null,reference:null};
+    const NUM = "(\\d{1,3}(?:[.,\\s]\\d{3})*[.,]\\d{2}|\\d+[.,]\\d{2})";
+
+    // amount: keyword first, then currency sign, then the largest money-looking number
+    const amtKw = /(monto|importe|total|valor|amount|cantidad|enviaste|transferiste|pagaste|you sent|sent)/i;
+    let cands = [];
+    lines.forEach((ln,i)=>{
+      const re = new RegExp("(?:B\\/\\.?|USD|US\\$|\\$)?\\s*"+NUM,"g"); let m;
+      while((m=re.exec(ln))){
+        const n=toNum(m[1]); if(!(n>0) || n>10000000) continue;
+        let score=0;
+        if(/(B\/|USD|\$)/.test(m[0])) score+=3;
+        if(amtKw.test(ln) || (i>0 && amtKw.test(lines[i-1]))) score+=4;
+        if(/(saldo|balance|disponible|comisi|fee|cargo|itbms)/i.test(ln)) score-=5;
+        cands.push({n,score,i});
+      }
+    });
+    cands.sort((a,b)=>b.score-a.score || b.n-a.n);
+    if(cands.length) out.amount = Math.round(cands[0].n*100)/100;
+
+    // date
+    const now=new Date(); let dt=null;
+    const valid=(y,m,d)=>{ if(y<100) y+=2000; const x=new Date(y,m-1,d); return x.getFullYear()===y&&x.getMonth()===m-1&&x.getDate()===d ? x : null; };
+    let m;
+    if((m=low.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) dt=valid(+m[1],+m[2],+m[3]);
+    if(!dt && (m=low.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/))){
+      const a=+m[1], b=+m[2], y=+m[3];
+      dt = valid(y,b,a);                       // Panama style: day/month/year
+      if(!dt || dt>now) dt = valid(y,a,b) || dt; // fall back to month/day
+    }
+    if(!dt && (m=low.match(/(\d{1,2})\s*(?:de\s+)?([a-zñ]{3,})\.?\s*(?:de\s+|,\s*)?(\d{4})/))){ const mo=MONTHS[m[2].slice(0,3)]; if(mo) dt=valid(+m[3],mo,+m[1]); }
+    if(!dt && (m=low.match(/([a-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})/))){ const mo=MONTHS[m[1].slice(0,3)]; if(mo) dt=valid(+m[3],mo,+m[2]); }
+    if(dt) out.date = dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+
+    // reference / confirmation number
+    for(let i=0;i<lines.length && !out.reference;i++){
+      if(/(referencia|ref\b|ref\.|comprobante|confirmaci|confirmation|transacci|transaction|autorizaci|n[uú]mero de|no\.|#)/i.test(lines[i])){
+        const same = lines[i].replace(/.*?(referencia|ref\.?|comprobante|confirmaci[oó]n|confirmation|transacci[oó]n|transaction|autorizaci[oó]n|n[uú]mero de \w+|no\.|#)\s*[:#-]?\s*/i,"");
+        const pick = s => { const mm = s.match(/[A-Z0-9][A-Z0-9-]{4,}/i); return mm && /\d/.test(mm[0]) ? mm[0] : null; };
+        out.reference = pick(same) || (lines[i+1] ? pick(lines[i+1]) : null);
+      }
+    }
+
+    // recipient
+    const recKw = /(beneficiario|destinatario|a nombre de|para|enviado a|pagado a|recipient|beneficiary|to\b|cuenta destino|destino|nombre)/i;
+    for(let i=0;i<lines.length && !out.recipient;i++){
+      const ln=lines[i]; const mm=ln.match(recKw); if(!mm) continue;
+      if(/(origen|desde|from|remitente|ordenante)/i.test(ln)) continue;
+      let rest = ln.slice(mm.index+mm[0].length).replace(/^[\s:.-]+/,"");
+      if(!/[a-záéíóúñ]{2,}/i.test(rest) && lines[i+1]) rest=lines[i+1];
+      rest = rest.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñü0-9 .&'-]/g," ").replace(/\s+/g," ").trim();
+      if(rest.length>=3 && /[a-z]{2,}/i.test(rest) && !/^\d+$/.test(rest)) out.recipient = rest.slice(0,60);
+    }
+
+    // method
+    if(/yappy/.test(low)) out.method="Yappy";
+    else if(/\bach\b/.test(low)) out.method="ACH";
+    else if(/(transferencia|transfer)/.test(low)) out.method="Bank transfer";
+    else if(/(tarjeta|card)/.test(low)) out.method="Credit / debit card";
+    return out;
+  }
   async function scanReceipt(file){
-    if(!sample || !canReadImages || !/^image\//.test(file.type)) return;
+    if(!/^image\//.test(file.type)) return;
     scanCtl && scanCtl.abort();
     const ctl = scanCtl = new AbortController();
-    $("scanBox").innerHTML='<div class="box">✨ Reading the transfer… <button type="button" class="btn ghost small" id="scanStop" style="margin-left:6px">Stop</button></div>';
+    const firstTime = !ocrWorkerP;
+    $("scanBox").innerHTML='<div class="box">✨ <span id="scanState">'+(firstTime?"Getting the reader ready (first time only, about 15 MB)…":"Reading the transfer…")+'</span> <button type="button" class="btn ghost small" id="scanStop" style="margin-left:6px">Stop</button></div>';
     $("scanStop").onclick=()=>ctl.abort();
-    const prompt = 'This image is a screenshot or photo of a payment (bank transfer, Yappy, ACH, check, card receipt, etc.). '+
-      'Extract the payment details. Reply with ONLY a JSON object, no other text, like: '+
-      '{"amount": 150.00, "currency": "USD", "date": "2026-11-17", "recipient": "Name of the person or organization who RECEIVED the money", '+
-      '"method": "Bank transfer", "reference": "confirmation or reference number", "bank": "bank or app name"}. '+
-      'Rules: amount is the amount sent, as a number without symbols. date in YYYY-MM-DD (today is '+today()+'; if the year is missing assume the most recent past date). '+
-      'method must be one of: '+METHODS.join(", ")+'. recipient is the beneficiary / destination name, never the sender. '+
-      'Use null for anything you cannot read. If the image is not a payment, reply {"amount": null}.';
     try{
-      const r = await sample.json(prompt,{images:[file], signal:ctl.signal});
+      const r = await readTransferLocal(file, ctl.signal, (st,pr)=>{
+        const el=$("scanState"); if(!el || ctl!==scanCtl) return;
+        el.textContent = /recogniz/i.test(st) ? "Reading the transfer… "+Math.round(pr*100)+"%" : (firstTime ? "Getting the reader ready (first time only)… "+Math.round(pr*100)+"%" : "Reading the transfer…");
+      });
       if(ctl!==scanCtl) return;
       scanCtl=null;
       if(!r || typeof r!=="object" || !(+r.amount>0)){ $("scanBox").innerHTML='<div class="box">Couldn\'t find payment details in that image — please fill them in.</div>'; return; }
@@ -632,7 +736,7 @@
       const c=e&&e.code;
       if(c==="cancelled"){ $("scanBox").innerHTML=""; return; }
       if(c==="not_granted"||c==="sampling_disabled"||c==="images_unavailable"||c==="capability_disabled"||c==="capability_removed"||c==="not_declared"){ canReadImages=false; $("scanBox").innerHTML=""; return; }
-      $("scanBox").innerHTML='<div class="box">Couldn\'t read the transfer'+(c==="rate_limited"?" right now (busy — try again in a bit)":"")+'. Fill the details in by hand.</div>';
+      $("scanBox").innerHTML='<div class="box">Couldn\'t read the transfer'+(firstTime?" — the reader needs an internet connection the first time":"")+'. Fill the details in by hand.</div>';
     }
   }
 
