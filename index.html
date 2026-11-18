@@ -177,6 +177,10 @@
     <div id="lkMain">
       <h2 id="lkTitle">Loading…</h2>
       <p class="muted" id="lkSub" style="margin:0 0 18px;font-size:14px"></p>
+      <div id="lkPkBox" hidden style="margin:4px 0 18px">
+        <button class="btn" id="lkPk" style="padding:14px 22px;font-size:16px">Unlock with Face ID / Touch ID</button>
+        <div><button class="linkbtn" id="lkUsePin" style="margin-top:10px">Use PIN instead</button></div>
+      </div>
       <div class="dots" id="lkDots"><span></span><span></span><span></span><span></span><span></span><span></span></div>
       <div class="lkmsg" id="lkMsg"></div>
       <div class="pad" id="lkPad">
@@ -349,7 +353,8 @@
       <input type="file" id="restoreFile" accept="application/json,.json" hidden>
       <div class="muted" id="bkStatus" style="font-size:12px;margin-top:6px"></div>
     </div>
-    <div class="field"><label>PIN lock</label><button class="btn ghost small" id="sChangePin" type="button">Change PIN</button></div>
+    <div class="field"><label>Face ID / Touch ID (passkey)</label><button class="btn ghost small" id="sPasskey" type="button">Use Face ID / Touch ID</button><div class="muted" id="sPasskeyNote" style="font-size:12px;margin-top:6px"></div></div>
+    <div class="field"><label>PIN lock (backup)</label><button class="btn ghost small" id="sChangePin" type="button">Change PIN</button></div>
     <div class="field"><label for="sStart">Opening balance (maaser owed from before you started tracking)</label><input type="number" step="0.01" id="sStart" placeholder="0.00"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
       <button class="btn ghost" id="sCancel">Cancel</button>
@@ -977,7 +982,7 @@
 
 
   // ---------- settings ----------
-  $("settingsBtn").onclick=()=>{ $("sPct").value=String(settings.percent); $("sCur").value=settings.currency; $("sStart").value=settings.startBalance||""; $("settingsModal").classList.add("show"); };
+  $("settingsBtn").onclick=()=>{ drawPasskeySetting(); $("sPct").value=String(settings.percent); $("sCur").value=settings.currency; $("sStart").value=settings.startBalance||""; $("settingsModal").classList.add("show"); };
   $("sCancel").onclick=()=>$("settingsModal").classList.remove("show");
   $("sSave").onclick=async()=>{
     settings={percent:+$("sPct").value||10, currency:$("sCur").value.trim()||"$", startBalance:round(parseFloat($("sStart").value)||0)};
@@ -1023,21 +1028,23 @@
     document.body.classList.add("locked");
     $("lockScreen").hidden=false;
     $("lkReset").hidden=true; $("lkMain").hidden=false;
-    const t={loading:["Loading…",""],enter:["Enter your PIN","Your maaser tracker is locked"],
+    const pkMode = mode==="enter" && lockData && lockData.passkey && !usePinNow;
+    const t={loading:["Loading…",""],enter: pkMode?["Locked","Unlock your maaser tracker"]:["Enter your PIN","Your maaser tracker is locked"],
       setup1:["Create a 6-digit PIN","You'll enter it each time you open the tracker"],setup2:["Confirm your PIN","Enter the same 6 digits again"],
       changeOld:["Enter your current PIN","To change your PIN"],error:["Can't check your PIN","Couldn't reach your account — check your connection"]}[mode];
     $("lkTitle").textContent=t[0]; $("lkSub").textContent=t[1];
     $("lkMsg").textContent=msg||"";
-    const pad = mode!=="loading" && mode!=="error";
+    const pad = mode!=="loading" && mode!=="error" && !pkMode;
+    $("lkPkBox").hidden = !pkMode;
     $("lkDots").style.visibility = pad ? "" : "hidden";
     $("lkPad").style.display = pad ? "" : "none";
     $("lkRetry").hidden = mode!=="error";
-    $("lkForgot").hidden = !(mode==="enter"||mode==="changeOld");
+    $("lkForgot").hidden = !((mode==="enter"&&!pkMode)||mode==="changeOld");
     $("lkRestore").hidden = !(mode==="setup1" && !lockData && !entries.length);
     $("lkCancel").hidden = mode!=="changeOld" && !(mode==="setup1"&&lockData) && !(mode==="setup2"&&lockData);
     drawDots();
   }
-  function unlock(){ lockMode="open"; pinBuf=""; document.body.classList.remove("locked"); $("lockScreen").hidden=true; render(); }
+  function unlock(){ usePinNow=false; lockMode="open"; pinBuf=""; document.body.classList.remove("locked"); $("lockScreen").hidden=true; render(); }
   function drawDots(){ [...$("lkDots").children].forEach((d,i)=>d.classList.toggle("on",i<pinBuf.length)); }
   function shake(msg){ $("lkMsg").textContent=msg; const d=$("lkDots"); d.classList.remove("shake"); void d.offsetWidth; d.classList.add("shake"); pinBuf=""; setTimeout(drawDots,250); }
 
@@ -1056,7 +1063,8 @@
     } else if(lockMode==="setup2"){
       if(pin!==firstPin){ firstPin=""; showLock("setup1","The PINs didn't match — try again"); return; }
       const salt=newSalt(), hash=await pinHash(pin,salt);
-      try{ await lockStore.set({salt,hash,updated:Date.now()}); lockData={salt,hash}; firstPin=""; setFailState({n:0,until:0}); unlock(); toast("PIN saved"); }
+      const keep = lockData && lockData.passkey ? {passkey:lockData.passkey} : {};
+      try{ await lockStore.set(Object.assign({salt,hash,updated:Date.now()},keep)); lockData=Object.assign({salt,hash},keep); firstPin=""; setFailState({n:0,until:0}); unlock(); toast("PIN saved"); }
       catch(e){ showLock("setup1","Couldn't save your PIN — try again"); }
     }
   }
@@ -1076,6 +1084,96 @@
   $("lkRetry").onclick=()=>lockStart();
   $("lkCancel").onclick=()=>{ firstPin=""; unlock(); };
   $("lockBtn").onclick=()=>{ if(lockData) showLock("enter"); else showLock("setup1"); };
+  // ---------- passkey (Face ID / Touch ID) ----------
+  let usePinNow = false;
+  const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  const unb64u = s => { s=s.replace(/-/g,"+").replace(/_/g,"/"); while(s.length%4) s+="="; const b=atob(s); const a=new Uint8Array(b.length); for(let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return a.buffer; };
+  async function passkeyAvailable(){
+    try{ return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }catch(e){ return false; }
+  }
+  // DER ECDSA signature -> raw r||s (what WebCrypto expects)
+  function derToRaw(der){
+    const d=new Uint8Array(der); let i=2; if(d[1]&0x80) i+= (d[1]&0x7f);
+    const read=()=>{ i++; let len=d[i++]; let v=d.slice(i,i+len); i+=len; while(v.length>32 && v[0]===0) v=v.slice(1); const o=new Uint8Array(32); o.set(v,32-v.length); return o; };
+    const r=read(), s=read(); const out=new Uint8Array(64); out.set(r,0); out.set(s,32); return out.buffer;
+  }
+  async function passkeySetup(){
+    const challenge=crypto.getRandomValues(new Uint8Array(32));
+    const cred = await navigator.credentials.create({publicKey:{
+      challenge, rp:{name:"Maaser Tracker", id:location.hostname},
+      user:{id:crypto.getRandomValues(new Uint8Array(16)), name:"Maaser Tracker", displayName:"Maaser Tracker"},
+      pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:"platform", residentKey:"preferred", userVerification:"required"},
+      timeout:60000, attestation:"none"
+    }});
+    if(!cred) throw new Error("no credential");
+    const r=cred.response;
+    let pub=null, alg=-7;
+    try{ const k=r.getPublicKey && r.getPublicKey(); if(k) pub=b64u(k); alg=r.getPublicKeyAlgorithm ? r.getPublicKeyAlgorithm() : -7; }catch(e){}
+    return {id:b64u(cred.rawId), pub, alg};
+  }
+  async function passkeyVerify(pk){
+    const challenge=crypto.getRandomValues(new Uint8Array(32));
+    const a = await navigator.credentials.get({publicKey:{
+      challenge, rpId:location.hostname, allowCredentials:[{type:"public-key", id:unb64u(pk.id)}],
+      userVerification:"required", timeout:60000
+    }});
+    if(!a) return false;
+    const r=a.response;
+    const cd=JSON.parse(new TextDecoder().decode(r.clientDataJSON));
+    if(cd.type!=="webauthn.get" || cd.challenge!==b64u(challenge) || cd.origin!==location.origin) return false;
+    const auth=new Uint8Array(r.authenticatorData);
+    if(!(auth[32]&0x01) || !(auth[32]&0x04)) return false;          // user present + verified by Face ID / Touch ID
+    if(pk.pub){
+      const hash=await crypto.subtle.digest("SHA-256", r.clientDataJSON);
+      const data=new Uint8Array(auth.length+32); data.set(auth,0); data.set(new Uint8Array(hash),auth.length);
+      if(pk.alg===-257){
+        const key=await crypto.subtle.importKey("spki",unb64u(pk.pub),{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["verify"]);
+        return await crypto.subtle.verify("RSASSA-PKCS1-v1_5",key,r.signature,data);
+      }
+      const key=await crypto.subtle.importKey("spki",unb64u(pk.pub),{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
+      return await crypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,derToRaw(r.signature),data);
+    }
+    return true;
+  }
+  async function passkeyUnlock(){
+    if(!lockData || !lockData.passkey) return;
+    $("lkMsg").textContent="";
+    try{
+      const ok = await passkeyVerify(lockData.passkey);
+      if(ok){ setFailState({n:0,until:0}); unlock(); }
+      else $("lkMsg").textContent="Face ID / Touch ID didn't match — try again or use your PIN";
+    }catch(e){
+      $("lkMsg").textContent = (e && e.name==="NotAllowedError") ? "Cancelled — tap to try again, or use your PIN" : "Couldn't use Face ID / Touch ID — use your PIN";
+    }
+  }
+  async function drawPasskeySetting(){
+    const b=$("sPasskey"), note=$("sPasskeyNote"); if(!b) return;
+    const ok = await passkeyAvailable();
+    if(!ok){ b.hidden=true; note.textContent="Face ID / Touch ID isn't available in this browser."; return; }
+    b.hidden=false;
+    const on = !!(lockData && lockData.passkey);
+    b.textContent = on ? "Turn off Face ID / Touch ID" : "Use Face ID / Touch ID";
+    note.textContent = on ? "On — the app opens with Face ID / Touch ID. Your PIN still works as a backup." : (lockData ? "" : "Create a PIN first.");
+    b.disabled = !lockData;
+  }
+  $("lkPk").onclick=()=>passkeyUnlock();
+  $("lkUsePin").onclick=()=>{ usePinNow=true; showLock("enter"); };
+  $("sPasskey").onclick=async()=>{
+    if(!lockData) return;
+    if(lockData.passkey){
+      const next=Object.assign({},lockData); delete next.passkey;
+      try{ await lockStore.set(Object.assign({updated:Date.now()},next)); lockData=next; toast("Face ID / Touch ID turned off"); }catch(e){ toast("Couldn't change it — try again"); }
+    } else {
+      try{
+        const pkc = await passkeySetup();
+        const next=Object.assign({},lockData,{passkey:pkc});
+        await lockStore.set(Object.assign({updated:Date.now()},next)); lockData=next;
+        toast("Face ID / Touch ID is on");
+      }catch(e){ toast(e && e.name==="NotAllowedError" ? "Cancelled" : "Couldn't set up Face ID / Touch ID"); }
+    }
+    drawPasskeySetting();
+  };
   $("sChangePin").onclick=()=>{ $("settingsModal").classList.remove("show"); showLock(lockData?"changeOld":"setup1"); };
 
   // forgot PIN: prove it's you with the amount of your latest entry
@@ -1108,7 +1206,7 @@
     showLock("loading");
     try{
       const d = await Promise.race([lockStore.get(), new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),12000))]);
-      if(d && typeof d.salt==="string" && typeof d.hash==="string"){ lockData={salt:d.salt,hash:d.hash}; showLock("enter"); }
+      if(d && typeof d.salt==="string" && typeof d.hash==="string"){ lockData={salt:d.salt,hash:d.hash,passkey:(d.passkey&&typeof d.passkey.id==="string")?d.passkey:null}; usePinNow=false; showLock("enter"); }
       else { lockData=null; showLock("setup1"); }
     }catch(e){ showLock("error"); }
   }
@@ -1246,7 +1344,7 @@
         receipts:Array.isArray(x.receipts)?x.receipts.filter(r=>r&&typeof r.id==="string").map(r=>({id:r.id,name:String(r.name||""),type:String(r.type||"")})):[],created:+x.created||0}));
       if(d.settings) settings=Object.assign({percent:10,currency:"$",startBalance:0},d.settings);
       await saveState(); await kvSet("settings",settings);
-      if(d.lock && d.lock.salt && d.lock.hash){ await kvSet("lock",d.lock); lockData={salt:d.lock.salt,hash:d.lock.hash}; }
+      if(d.lock && d.lock.salt && d.lock.hash){ await kvSet("lock",d.lock); lockData={salt:d.lock.salt,hash:d.lock.hash,passkey:(d.lock.passkey&&typeof d.lock.passkey.id==="string")?d.lock.passkey:null}; }
       dirty=0; lastBackup=Date.now(); await kvSet("meta",{dirty,lastBackup});
       render(); drawBackupBar(); toast("Restored "+entries.length+" entries");
       if(document.body.classList.contains("locked")) showLock(lockData?"enter":"setup1");
