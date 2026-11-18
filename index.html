@@ -260,6 +260,10 @@
               <select id="fMethod"><option value="">—</option><option>Bank transfer</option><option>Yappy</option><option>ACH</option><option>Cash</option><option>Check</option><option>Credit / debit card</option><option>Other</option></select>
             </div>
           </div>
+          <div class="row">
+            <div><label for="fBank">Bank</label><input id="fBank" maxlength="60" placeholder="e.g. Banco Aliado"></div>
+            <div><label for="fAcct">Account #</label><input id="fAcct" maxlength="40" placeholder="Recipient's account"></div>
+          </div>
           <div class="field"><label for="fRef">Reference / confirmation # (optional)</label><input id="fRef" maxlength="60"></div>
         </div>
         <div class="field"><label for="fNote">Note (optional)</label><input id="fNote" maxlength="140"></div>
@@ -489,14 +493,14 @@
       const th=(e.receipts||[]).map((r,i)=> isImg(r.type)
         ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
         : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'">PDF</button>').join("");
-      return '<tr><td style="white-space:nowrap">'+niceDate(e.date)+'</td><td><b style="font-weight:600">'+esc(e.desc||"—")+'</b>'+(e.note?'<div class="muted" style="font-size:12px">'+esc(e.note)+'</div>':'')+'</td><td class="muted">'+esc(e.method||"—")+(e.ref?'<div style="font-size:12px">Ref '+esc(e.ref)+'</div>':'')+'</td><td class="num" style="color:var(--green);font-weight:600">'+fmt(e.amount)+(e.total?'<span class="split">of '+fmt(e.total)+' transfer</span>':'')+'</td><td><div class="thumbs" style="margin:0">'+(th||'<span class="muted" style="font-size:12px">—</span>')+'</div></td></tr>';
+      return '<tr><td style="white-space:nowrap">'+niceDate(e.date)+'</td><td><b style="font-weight:600">'+esc(e.desc||"—")+'</b>'+(e.note?'<div class="muted" style="font-size:12px">'+esc(e.note)+'</div>':'')+'</td><td class="muted">'+esc(e.method||"—")+(e.bank||e.account?'<div style="font-size:12px">'+esc([e.bank,e.account?("Acct "+e.account):""].filter(Boolean).join(" · "))+'</div>':'')+(e.ref?'<div style="font-size:12px">Ref '+esc(e.ref)+'</div>':'')+'</td><td class="num" style="color:var(--green);font-weight:600">'+fmt(e.amount)+(e.total?'<span class="split">of '+fmt(e.total)+' transfer</span>':'')+'</td><td><div class="thumbs" style="margin:0">'+(th||'<span class="muted" style="font-size:12px">—</span>')+'</div></td></tr>';
     }).join("") + '<tr><td colspan="3" style="font-weight:600">Total paid</td><td class="num" style="font-weight:700;color:var(--green)">'+fmt(sm.give)+'</td><td></td></tr>'
       : '<tr><td colspan="5" class="empty">No one paid this month.</td></tr>';
     $("mdListM").innerHTML = mDons.length ? mDons.map(e=>{
       const th=(e.receipts||[]).map((r,i)=> isImg(r.type)
         ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
         : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'">PDF</button>').join("");
-      const sub=[niceDate(e.date), e.method, e.ref?("Ref "+e.ref):""].filter(Boolean).map(esc).join(" · ");
+      const sub=[niceDate(e.date), e.method, e.bank, e.account?("Acct "+e.account):"", e.ref?("Ref "+e.ref):""].filter(Boolean).map(esc).join(" · ");
       return '<div class="mcard"><div class="mrow"><b style="font-weight:600">'+esc(e.desc||"—")+'</b><span class="amt" style="color:var(--green)">'+fmt(e.amount)+'</span></div>'+
         '<div class="mrow"><span class="msub">'+sub+'</span>'+(e.total?'<span class="msub" style="white-space:nowrap">of '+fmt(e.total)+'</span>':'')+'</div>'+
         (e.note?'<div class="msub">'+esc(e.note)+'</div>':'')+(th?'<div class="thumbs">'+th+'</div>':'')+'</div>';
@@ -523,13 +527,13 @@
     const q=$("search").value.trim().toLowerCase();
 
     const list = sorted.filter(e=>(fm.value==="all"||ym(e.date)===fm.value)&&(ft==="all"||e.type===ft)&&
-      (!q || [e.desc,e.note,e.ref,e.method].join(" ").toLowerCase().includes(q)));
+      (!q || [e.desc,e.note,e.ref,e.method,e.bank,e.account].join(" ").toLowerCase().includes(q)));
     $("entries").innerHTML = list.length ? list.map(e=>{
       const isIn=e.type==="income";
       const del = pendingDelete===e.id
         ? '<button class="btn danger small" data-del="'+e.id+'">Confirm delete</button> <button class="btn ghost small" data-cancel="1">Keep</button>'
         : '<button class="btn ghost small" data-edit="'+e.id+'">Edit</button> <button class="btn ghost small" data-ask="'+e.id+'">Delete</button>';
-      const meta = [e.total?("Split of "+fmt(e.total)+" transfer"):"", e.method, e.ref?("Ref "+e.ref):"", e.note].filter(Boolean).map(esc).join(" · ");
+      const meta = [e.total?("Split of "+fmt(e.total)+" transfer"):"", e.method, e.bank, e.account?("Acct "+e.account):"", e.ref?("Ref "+e.ref):"", e.note].filter(Boolean).map(esc).join(" · ");
       const thumbs = (e.receipts||[]).length ? '<div class="thumbs">'+e.receipts.map((r,i)=> isImg(r.type)
           ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
           : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'" title="'+esc(r.name)+'">PDF</button>').join("")+'</div>' : "";
@@ -545,7 +549,7 @@
       const del = pendingDelete===e.id
         ? '<button class="btn danger small" data-del="'+e.id+'">Confirm delete</button> <button class="btn ghost small" data-cancel="1">Keep</button>'
         : '<button class="btn ghost small" data-edit="'+e.id+'">Edit</button> <button class="btn ghost small" data-ask="'+e.id+'">Delete</button>';
-      const meta = [e.total?("Split of "+fmt(e.total)):"", e.method, e.ref?("Ref "+e.ref):"", e.note].filter(Boolean).map(esc).join(" · ");
+      const meta = [e.total?("Split of "+fmt(e.total)):"", e.method, e.bank, e.account?("Acct "+e.account):"", e.ref?("Ref "+e.ref):"", e.note].filter(Boolean).map(esc).join(" · ");
       const thumbs = (e.receipts||[]).map((r,i)=> isImg(r.type)
           ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
           : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'">PDF</button>').join("");
@@ -588,7 +592,7 @@
   }
   function resetForm(){
     editingId=null; newFiles=[]; keptReceipts=[]; scanCtl&&scanCtl.abort(); scanCtl=null;
-    ["fAmt","fDesc","fNote","fRef","fTotal"].forEach(id=>$(id).value=""); $("fMethod").value=""; $("fFiles").value="";
+    ["fAmt","fDesc","fNote","fRef","fTotal","fBank","fAcct"].forEach(id=>$(id).value=""); $("fMethod").value=""; $("fFiles").value="";
     $("scanBox").innerHTML="";
     $("fDate").value=today(); renderChips(); setMode(mode);
   }
@@ -642,7 +646,7 @@
     const text = raw.replace(/\r/g,"");
     const lines = text.split("\n").map(x=>x.trim()).filter(Boolean);
     const low = text.toLowerCase();
-    const out = {amount:null,date:null,recipient:null,method:null,reference:null};
+    const out = {amount:null,date:null,recipient:null,method:null,reference:null,description:null,bank:null,account:null,raw:text};
     const NUM = "(\\d{1,3}(?:[.,\\s]\\d{3})*[.,]\\d{2}|\\d+[.,]\\d{2})";
 
     // amount: keyword first, then currency sign, then the largest money-looking number
@@ -678,22 +682,80 @@
 
     // reference / confirmation number
     for(let i=0;i<lines.length && !out.reference;i++){
-      if(/(referencia|ref\b|ref\.|comprobante|confirmaci|confirmation|transacci|transaction|autorizaci|n[uú]mero de|no\.|#)/i.test(lines[i])){
-        const same = lines[i].replace(/.*?(referencia|ref\.?|comprobante|confirmaci[oó]n|confirmation|transacci[oó]n|transaction|autorizaci[oó]n|n[uú]mero de \w+|no\.|#)\s*[:#-]?\s*/i,"");
+      if(/cuenta|account/i.test(lines[i])) continue;
+      if(/(referencia|ref\b|ref\.|comprobante|recibo|receipt|confirmaci|confirmation|transacci|transaction|autorizaci|n[uú]mero de|no\.|#)/i.test(lines[i])){
+        const same = lines[i].replace(/.*?(referencia|ref\.?|comprobante|n[uú]mero de recibo|recibo|receipt number|receipt no\.?|receipt|confirmaci[oó]n|confirmation|transacci[oó]n|transaction|autorizaci[oó]n|n[uú]mero de \w+|no\.|#)\s*(number|no\.?|#)?\s*[:#-]?\s*/i,"");
         const pick = s => { const mm = s.match(/[A-Z0-9][A-Z0-9-]{4,}/i); return mm && /\d/.test(mm[0]) ? mm[0] : null; };
         out.reference = pick(same) || (lines[i+1] ? pick(lines[i+1]) : null);
       }
     }
 
-    // recipient
-    const recKw = /(beneficiario|destinatario|a nombre de|para|enviado a|pagado a|recipient|beneficiary|to\b|cuenta destino|destino|nombre)/i;
-    for(let i=0;i<lines.length && !out.recipient;i++){
-      const ln=lines[i]; const mm=ln.match(recKw); if(!mm) continue;
-      if(/(origen|desde|from|remitente|ordenante)/i.test(ln)) continue;
-      let rest = ln.slice(mm.index+mm[0].length).replace(/^[\s:.-]+/,"");
-      if(!/[a-záéíóúñ]{2,}/i.test(rest) && lines[i+1]) rest=lines[i+1];
-      rest = rest.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñü0-9 .&'-]/g," ").replace(/\s+/g," ").trim();
-      if(rest.length>=3 && /[a-z]{2,}/i.test(rest) && !/^\d+$/.test(rest)) out.recipient = rest.slice(0,60);
+    // recipient: strongest labels first; never a bank or an account number
+    const isBankish = s => /\b(banco|bank|caja de ahorros|credicorp|banistmo|banesco|multibank|global bank|scotiabank|davivienda|canal bank|mercantil|aliado|ahorros?|corriente|cuenta|account|checking|savings|preferencial|regular)\b/i.test(s);
+    const cleanName = s => s.replace(/[*•#]?\d[\d\s-]*/g," ").replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñü .&'-]/g," ").replace(/\s+/g," ").trim();
+    const goodName = s => s && s.length>=3 && /[a-záéíóúñ]{2,}/i.test(s) && !isBankish(s) && !/^(account|cuenta|name|nombre|bank|banco)$/i.test(s);
+    const fromCtx = i => /(origen|desde|from|remitente|ordenante|debitar|d[eé]bito|cargo|withdrawal|retiro|tu cuenta|mi cuenta|your account|sender)/i.test(lines[i]||"");
+    const LABELONLY = /^(account|cuenta|name|nombre|number|n[uú]mero|no\.?|de|del|the)$/i;
+    const STOP = /^(amount|monto|importe|date|fecha|recipient bank|banco|bank|status|estado|transfer type|tipo|receipt|recibo|referencia|withdrawal|retiro|description|descripci|concepto|commission|comisi)/i;
+    const ahead = (i,n) => { const out=[]; for(let j=i+1;j<=i+n && j<lines.length;j++){ if(STOP.test(lines[j])) break; out.push(j); } return out; };
+    const recRules = [
+      /(nombre del beneficiario|nombre beneficiario|beneficiario|beneficiary name|beneficiary(?! bank)|nombre del destinatario|destinatario|recipient name|recipient(?! bank)|a nombre de|titular de la cuenta destino|titular destino)/i,
+      /(destination account|destination|cuenta destino|cuenta de destino|destino)/i,
+      /(enviado a|enviaste a|pagado a|transferido a|paid to|sent to|para)/i,
+      /(nombre|name|\bto\b)/i
+    ];
+    for(const rule of recRules){
+      for(let i=0;i<lines.length && !out.recipient;i++){
+        const ln=lines[i]; const mm=ln.match(rule); if(!mm) continue;
+        if(fromCtx(i)) continue;
+        if(/^(banco|bank)/i.test(ln.slice(mm.index+mm[0].length).trim())) continue;
+        const after = ln.slice(mm.index+mm[0].length).replace(/^[\s:.-]+/,"");
+        let rest = cleanName(after);
+        // a wrapped label ("Destination" / "Account") leaves the word on the next line: drop it
+        rest = rest.replace(/^(account|cuenta|name|nombre)\b\s*/i,"");
+        if(!rest){ for(const j of ahead(i,3)){ if(fromCtx(j)) break; const c=cleanName(lines[j]).replace(/^(account|cuenta|name|nombre)\b\s*/i,""); if(!c || LABELONLY.test(c)) continue; rest=c; break; } }
+        if(goodName(rest)) out.recipient = rest.slice(0,60);
+      }
+      if(out.recipient) break;
+    }
+
+    // receiving bank and account (never the sender's)
+    const BANKS = /(banco general|banco aliado|banco nacional|banistmo|bac credomatic|banesco|global bank|multibank|credicorp bank|caja de ahorros|scotiabank|davivienda|canal bank|banco delta|banisi|mercantil|metrobank|st\.? georges bank|towerbank|prival|bicsa|bct bank|banco lafise|lafise|unibank|capital bank|citibank|bank of america|chase|wells fargo|hsbc)/i;
+    const bankKw = /(recipient bank|destination bank|beneficiary bank|banco destino|banco de destino|banco del beneficiario|banco beneficiario|banco receptor|entidad destino|bank name|banco|bank)/i;
+    for(let i=0;i<lines.length && !out.bank;i++){
+      const ln=lines[i]; if(fromCtx(i)) continue;
+      const mm=ln.match(bankKw); if(!mm) continue;
+      let rest = ln.slice(mm.index+mm[0].length).replace(/^[\s:.-]+/,"").trim();
+      const k = ln.match(BANKS);
+      if(k){ out.bank=(ln.slice(k.index).match(/^[A-Za-zÁÉÍÓÚÑáéíóúñ .&-]+/)||[k[0]])[0].trim().slice(0,60); break; }
+      if(!/[a-z]{3,}/i.test(rest) && lines[i+1] && !fromCtx(i+1)) rest = lines[i+1].trim();
+      rest = rest.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ .&-]/g," ").replace(/\s+/g," ").trim();
+      if(rest.length>=3 && !/^(destino|beneficiario|receptor|name|nombre)$/i.test(rest)) out.bank = rest.slice(0,60);
+    }
+    const acctKw = /(destination account|cuenta destino|cuenta de destino|cuenta del beneficiario|cuenta beneficiario|n[uú]mero de cuenta|no\.? de cuenta|cuenta|account number|account no|acct|account|iban|clabe|destination|destino)/i;
+    const acctPat = /((?:[*•xX]{1,}[\s-]?)?\d[\d\s-]{2,}\d)/;
+    let acctCands=[];
+    for(let i=0;i<lines.length;i++){
+      const ln=lines[i]; const mm=ln.match(acctKw); if(!mm) continue;
+      if(fromCtx(i) || (i>0 && fromCtx(i-1) && !/destin|beneficiar|recipient/i.test(ln))) continue;
+      const tryLine = s => { const a=(s||"").match(acctPat); if(!a) return null; const v=a[1].replace(/\s+/g," ").trim(); return v.replace(/\D/g,"").length>=4 && !/[.,]\d{2}$/.test(v) ? v : null; };
+      let v = tryLine(ln.slice(mm.index+mm[0].length));
+      if(!v){ for(const j of ahead(i,3)){ if(fromCtx(j)) break; v=tryLine(lines[j]); if(v) break; } }
+      if(!v) continue;
+      let score = /destin|beneficiar|recipient/i.test(ln+" "+(lines[i-1]||"")) ? 2 : 1;
+      acctCands.push({v,score,i});
+    }
+    acctCands.sort((x,y)=>y.score-x.score||x.i-y.i);
+    if(acctCands.length) out.account=acctCands[0].v.slice(0,40);
+
+    // description / purpose of the transfer
+    const descKw = /(descripci[oó]n|concepto|detalle|motivo|prop[oó]sito|comentario|glosa|mensaje|nota|memo|description|purpose|note|message)/i;
+    for(let i=0;i<lines.length && !out.description;i++){
+      const ln=lines[i]; const mm=ln.match(descKw); if(!mm) continue;
+      let rest = ln.slice(mm.index+mm[0].length).replace(/^[\s:.-]+/,"").trim();
+      if(rest.length<2 && lines[i+1]) rest = lines[i+1].trim();
+      rest = rest.replace(/\s+/g," ");
+      if(rest.length>=2 && !descKw.test(rest)) out.description = rest.slice(0,140);
     }
 
     // method
@@ -726,9 +788,14 @@
       if(r.recipient && !$("fDesc").value.trim()){ $("fDesc").value=String(r.recipient).slice(0,80); filled.push("name"); }
       if(r.method && METHODS.includes(r.method) && !$("fMethod").value){ $("fMethod").value=r.method; filled.push("method"); }
       if(r.reference && !$("fRef").value.trim()){ $("fRef").value=String(r.reference).slice(0,60); filled.push("reference"); }
+      if(r.bank && !$("fBank").value.trim()){ $("fBank").value=String(r.bank).slice(0,60); filled.push("bank"); }
+      if(r.account && !$("fAcct").value.trim()){ $("fAcct").value=String(r.account).slice(0,40); filled.push("account"); }
+      if(r.description && !$("fNote").value.trim()){ $("fNote").value=String(r.description).slice(0,140); filled.push("description"); }
       updatePreview();
-      $("scanBox").innerHTML='<div class="box">✨ Read: <b>'+esc(fmt(amt))+'</b>'+(r.recipient?' to <b>'+esc(r.recipient)+'</b>':'')+(r.date?' on '+esc(r.date):'')+(r.bank?' · '+esc(r.bank):'')+
-        '<div class="muted" style="font-size:12px;margin-top:4px">Check the details below. If you\'re splitting this transfer, change <b>Amount paid</b> to your part.</div></div>';
+      $("scanBox").innerHTML='<div class="box">✨ Read: <b>'+esc(fmt(amt))+'</b>'+(r.recipient?' to <b>'+esc(r.recipient)+'</b>':'')+(r.date?' on '+esc(r.date):'')+(r.bank?' · '+esc(r.bank):'')+(r.account?' · Acct '+esc(r.account):'')+
+        (r.description?'<div style="font-size:13px;margin-top:2px">Description: '+esc(r.description)+'</div>':'')+
+        '<div class="muted" style="font-size:12px;margin-top:4px">Check the details below. If you\'re splitting this transfer, change <b>Amount paid</b> to your part.</div>'+
+        (r.raw?'<details style="margin-top:6px;font-size:12px"><summary style="cursor:pointer;color:var(--blue)">Show the text it read</summary><pre style="white-space:pre-wrap;font-size:11px;margin:6px 0 0;max-height:220px;overflow:auto">'+esc(r.raw)+'</pre></details>':'')+'</div>';
       $("fAmt").focus(); $("fAmt").select && $("fAmt").select();
     }catch(e){
       if(ctl!==scanCtl && e && e.code!=="cancelled") return;
@@ -824,7 +891,7 @@
     }
     const e={ id: editingId || ("e"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)),
       type:mode, date, amount, total, desc:$("fDesc").value.trim(), note:$("fNote").value.trim(),
-      method: don?$("fMethod").value:"", ref: don?$("fRef").value.trim():"", receipts,
+      method: don?$("fMethod").value:"", ref: don?$("fRef").value.trim():"", bank: don?$("fBank").value.trim():"", account: don?$("fAcct").value.trim():"", receipts,
       created: old?old.created:Date.now() };
     const dropped = old ? (old.receipts||[]).filter(r=>!receipts.some(x=>x.id===r.id)) : [];
     const wasEdit=!!editingId;
@@ -839,7 +906,7 @@
       : "";
     if(rest>0.004) $("splitBtn").onclick=()=>{
       mode="donation"; keptReceipts=receipts.slice(); newFiles=[];
-      $("fDate").value=date; $("fAmt").value=rest; $("fTotal").value=total; $("fMethod").value=e.method; $("fRef").value=e.ref; $("fDesc").value=""; $("fNote").value="";
+      $("fDate").value=date; $("fAmt").value=rest; $("fTotal").value=total; $("fMethod").value=e.method; $("fRef").value=e.ref; $("fDesc").value=""; $("fNote").value=""; $("fBank").value=""; $("fAcct").value="";
       $("splitNext").innerHTML=""; renderChips(); setMode("donation"); updatePreview(); $("fDesc").focus();
     };
     try{
@@ -881,7 +948,7 @@
       const e=entries.find(x=>x.id===t.dataset.edit); if(!e) return;
       editingId=e.id; mode=e.type; newFiles=[]; keptReceipts=(e.receipts||[]).slice();
       $("fDate").value=e.date; $("fAmt").value=e.amount; $("fDesc").value=e.desc||""; $("fNote").value=e.note||"";
-      $("fMethod").value=e.method||""; $("fRef").value=e.ref||""; $("fTotal").value=e.total||""; $("scanBox").innerHTML=""; $("splitNext").innerHTML="";
+      $("fMethod").value=e.method||""; $("fRef").value=e.ref||""; $("fTotal").value=e.total||""; $("fBank").value=e.bank||""; $("fAcct").value=e.account||""; $("scanBox").innerHTML=""; $("splitNext").innerHTML="";
       renderChips(); setMode(e.type); $("form").scrollIntoView({behavior:"smooth",block:"center"}); $("fAmt").focus();
     }
   };
@@ -919,9 +986,9 @@
   $("exportBtn").onclick=()=>{
     const p=pct();
     const q=s=>'"'+String(s||"").replace(/"/g,'""')+'"';
-    const lines=[["Date","Type","Name / source","Paid by","Reference","Note","Amount","Full transfer (if split)","Maaser effect","Receipts"].join(",")];
+    const lines=[["Date","Type","Name / source","Paid by","Bank","Account","Reference","Note","Amount","Full transfer (if split)","Maaser effect","Receipts"].join(",")];
     entries.slice().sort((a,b)=>a.date<b.date?-1:1).forEach(e=>{
-      lines.push([e.date,e.type==="income"?"Earnings":"Donation",q(e.desc),q(e.method),q(e.ref),q(e.note),e.amount.toFixed(2),e.total?e.total.toFixed(2):"",(e.type==="income"?round(e.amount*p):-e.amount).toFixed(2),(e.receipts||[]).length].join(","));
+      lines.push([e.date,e.type==="income"?"Earnings":"Donation",q(e.desc),q(e.method),q(e.bank),q(e.account),q(e.ref),q(e.note),e.amount.toFixed(2),e.total?e.total.toFixed(2):"",(e.type==="income"?round(e.amount*p):-e.amount).toFixed(2),(e.receipts||[]).length].join(","));
     });
     $("csvOut").value=lines.join("\n"); $("exportModal").classList.add("show");
   };
@@ -1172,7 +1239,7 @@
         await fileSet(f.id,{blob,type:blob.type,name:String(f.name||"Receipt")}); fileUrls.set(f.id, URL.createObjectURL(blob));
       }
       entries = d.entries.map(x=>({id:String(x.id),type:x.type==="donation"?"donation":"income",date:/^\d{4}-\d{2}-\d{2}$/.test(x.date)?x.date:today(),amount:+x.amount||0,total:+x.total||0,
-        desc:String(x.desc||""),method:String(x.method||""),ref:String(x.ref||""),note:String(x.note||""),
+        desc:String(x.desc||""),method:String(x.method||""),ref:String(x.ref||""),bank:String(x.bank||""),account:String(x.account||""),note:String(x.note||""),
         receipts:Array.isArray(x.receipts)?x.receipts.filter(r=>r&&typeof r.id==="string").map(r=>({id:r.id,name:String(r.name||""),type:String(r.type||"")})):[],created:+x.created||0}));
       if(d.settings) settings=Object.assign({percent:10,currency:"$",startBalance:0},d.settings);
       await saveState(); await kvSet("settings",settings);
