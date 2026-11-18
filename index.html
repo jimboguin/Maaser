@@ -167,6 +167,17 @@
   .bkbar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--gold-soft);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:13px;position:sticky;top:calc(6px + env(safe-area-inset-top));z-index:4}
   .bkbar[hidden]{display:none}
   .bkbar .btn{white-space:nowrap}
+  [data-open]{cursor:pointer}
+  tr[data-open]:hover td{background:var(--bg)}
+  .mcard[data-open]:active{background:var(--bg)}
+  .modal.detail{max-width:520px;max-height:88vh;overflow:auto}
+  .dl{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;margin:14px 0 0;font-size:15px}
+  .dl dt{color:var(--muted);font-size:13px;font-weight:600;padding-top:1px}
+  .dl dd{margin:0;word-break:break-word}
+  .dtamt{font-family:"Frank Ruhl Libre",Georgia,serif;font-size:34px;font-weight:700;line-height:1.1;margin-top:6px}
+  .dtrc{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .dtrc img{max-width:150px;max-height:200px;border-radius:8px;border:1px solid var(--line);cursor:pointer;object-fit:cover}
+  .dtrc button{width:110px;height:140px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--red);font-weight:700;cursor:pointer}
   textarea{width:100%;height:160px;font:12px ui-monospace,monospace;border:1px solid var(--line);border-radius:9px;padding:8px;background:var(--bg);color:var(--ink)}
 </style>
 </head>
@@ -373,6 +384,16 @@
   </div>
 </div>
 
+<div class="modal-bg" id="detailModal">
+  <div class="card modal detail">
+    <div id="dtBody"></div>
+    <div style="display:flex;gap:8px;justify-content:space-between;margin-top:16px;flex-wrap:wrap">
+      <button class="btn ghost" id="dtDelete">Delete</button>
+      <div style="display:flex;gap:8px"><button class="btn ghost" id="dtEdit">Edit</button><button class="btn" id="dtClose">Close</button></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="exportModal">
   <div class="card modal">
     <h2>Export</h2>
@@ -385,7 +406,7 @@
   </div>
 </div>
 
-<div class="modal-bg" id="viewerModal">
+<div class="modal-bg" id="viewerModal" style="z-index:12">
   <div class="card modal viewer">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
       <h2 style="margin:0;font-size:17px" id="vTitle">Receipt</h2>
@@ -501,7 +522,7 @@
       const th=(e.receipts||[]).map((r,i)=> isImg(r.type)
         ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
         : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'">PDF</button>').join("");
-      return '<tr><td style="white-space:nowrap">'+niceDate(e.date)+'</td><td><b style="font-weight:600">'+esc(e.desc||"—")+'</b>'+(e.note?'<div class="muted" style="font-size:12px">'+esc(e.note)+'</div>':'')+'</td><td class="muted">'+esc(e.method||"—")+(e.bank||e.account?'<div style="font-size:12px">'+esc([e.bank,e.account?("Acct "+e.account):""].filter(Boolean).join(" · "))+'</div>':'')+(e.ref?'<div style="font-size:12px">Ref '+esc(e.ref)+'</div>':'')+'</td><td class="num" style="color:var(--green);font-weight:600">'+fmt(e.amount)+(e.total?'<span class="split">of '+fmt(e.total)+' transfer</span>':'')+'</td><td><div class="thumbs" style="margin:0">'+(th||'<span class="muted" style="font-size:12px">—</span>')+'</div></td></tr>';
+      return '<tr data-open="'+e.id+'"><td style="white-space:nowrap">'+niceDate(e.date)+'</td><td><b style="font-weight:600">'+esc(e.desc||"—")+'</b>'+(e.note?'<div class="muted" style="font-size:12px">'+esc(e.note)+'</div>':'')+'</td><td class="muted">'+esc(e.method||"—")+(e.bank||e.account?'<div style="font-size:12px">'+esc([e.bank,e.account?("Acct "+e.account):""].filter(Boolean).join(" · "))+'</div>':'')+(e.ref?'<div style="font-size:12px">Ref '+esc(e.ref)+'</div>':'')+'</td><td class="num" style="color:var(--green);font-weight:600">'+fmt(e.amount)+(e.total?'<span class="split">of '+fmt(e.total)+' transfer</span>':'')+'</td><td><div class="thumbs" style="margin:0">'+(th||'<span class="muted" style="font-size:12px">—</span>')+'</div></td></tr>';
     }).join("") + '<tr><td colspan="3" style="font-weight:600">Total paid</td><td class="num" style="font-weight:700;color:var(--green)">'+fmt(sm.give)+'</td><td></td></tr>'
       : '<tr><td colspan="5" class="empty">No one paid this month.</td></tr>';
     $("mdListM").innerHTML = mDons.length ? mDons.map(e=>{
@@ -509,7 +530,7 @@
         ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
         : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'">PDF</button>').join("");
       const sub=[niceDate(e.date), e.method, e.bank, e.account?("Acct "+e.account):"", e.ref?("Ref "+e.ref):""].filter(Boolean).map(esc).join(" · ");
-      return '<div class="mcard"><div class="mrow"><b style="font-weight:600">'+esc(e.desc||"—")+'</b><span class="amt" style="color:var(--green)">'+fmt(e.amount)+'</span></div>'+
+      return '<div class="mcard" data-open="'+e.id+'"><div class="mrow"><b style="font-weight:600">'+esc(e.desc||"—")+'</b><span class="amt" style="color:var(--green)">'+fmt(e.amount)+'</span></div>'+
         '<div class="mrow"><span class="msub">'+sub+'</span>'+(e.total?'<span class="msub" style="white-space:nowrap">of '+fmt(e.total)+'</span>':'')+'</div>'+
         (e.note?'<div class="msub">'+esc(e.note)+'</div>':'')+(th?'<div class="thumbs">'+th+'</div>':'')+'</div>';
     }).join("")+'<div class="mcard"><div class="mrow"><b>Total paid</b><span class="amt" style="color:var(--green)">'+fmt(sm.give)+'</span></div></div>'
@@ -545,7 +566,7 @@
       const thumbs = (e.receipts||[]).length ? '<div class="thumbs">'+e.receipts.map((r,i)=> isImg(r.type)
           ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
           : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'" title="'+esc(r.name)+'">PDF</button>').join("")+'</div>' : "";
-      return '<tr><td style="white-space:nowrap">'+esc(niceDate(e.date))+'</td>'+
+      return '<tr data-open="'+e.id+'"><td style="white-space:nowrap">'+esc(niceDate(e.date))+'</td>'+
         '<td><span class="tag '+(isIn?"in":"out")+'">'+(isIn?"Earnings":"Donation")+'</span></td>'+
         '<td>'+(isIn?"":'<span class="muted" style="font-size:12px">Paid to </span>')+'<b style="font-weight:600">'+esc(e.desc||"—")+'</b>'+(meta?'<div class="muted" style="font-size:12px">'+meta+'</div>':'')+thumbs+'</td>'+
         '<td class="num">'+fmt(e.amount)+'</td>'+
@@ -561,7 +582,7 @@
       const thumbs = (e.receipts||[]).map((r,i)=> isImg(r.type)
           ? '<img class="thumb" src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'" loading="lazy">'
           : '<button class="thumb" data-view="'+e.id+'" data-i="'+i+'">PDF</button>').join("");
-      return '<div class="mcard"><div class="mrow"><span><span class="tag '+(isIn?"in":"out")+'">'+(isIn?"Earnings":"Donation")+'</span> <span class="msub">'+esc(niceDate(e.date))+'</span></span><span class="amt">'+fmt(e.amount)+'</span></div>'+
+      return '<div class="mcard" data-open="'+e.id+'"><div class="mrow"><span><span class="tag '+(isIn?"in":"out")+'">'+(isIn?"Earnings":"Donation")+'</span> <span class="msub">'+esc(niceDate(e.date))+'</span></span><span class="amt">'+fmt(e.amount)+'</span></div>'+
         '<div class="mrow" style="margin-top:4px"><b style="font-weight:600">'+(isIn?"":'<span class="msub" style="font-weight:400">To </span>')+esc(e.desc||"—")+'</b><span class="amt" style="font-size:13px;color:'+(isIn?"var(--gold)":"var(--green)")+'">'+(isIn?"+"+fmt(round(e.amount*p))+" maaser":"−"+fmt(e.amount))+'</span></div>'+
         (meta?'<div class="msub">'+meta+'</div>':'')+
         '<div class="mrow" style="margin-top:6px;align-items:center"><div class="thumbs" style="margin:0">'+thumbs+'</div><div class="actions">'+del+'</div></div></div>';
@@ -940,7 +961,8 @@
   const entryClick = async ev=>{
     const v=ev.target.closest("[data-view]");
     if(v){ const e=entries.find(x=>x.id===v.dataset.view); if(e) openViewer(e,+v.dataset.i); return; }
-    const t=ev.target.closest("button"); if(!t) return;
+    const t=ev.target.closest("button");
+    if(!t){ const o=ev.target.closest("[data-open]"); if(o) openDetail(o.dataset.open); return; }
     if(t.dataset.ask){ pendingDelete=t.dataset.ask; render(); }
     else if(t.dataset.cancel){ pendingDelete=null; render(); }
     else if(t.dataset.del){
@@ -961,6 +983,43 @@
     }
   };
   $("entries").addEventListener("click", entryClick);
+  // ---------- entry details ----------
+  let detailId=null, detailDelArm=false;
+  function openDetail(id){
+    const e=entries.find(x=>x.id===id); if(!e) return;
+    detailId=id; detailDelArm=false; $("dtDelete").textContent="Delete"; $("dtDelete").className="btn ghost";
+    const isIn=e.type==="income", p=pct();
+    const row=(k,v)=> v ? '<dt>'+k+'</dt><dd>'+v+'</dd>' : '';
+    const rc=(e.receipts||[]).map((r,i)=> isImg(r.type)
+      ? '<img src="'+blobUrl(r.id)+'" alt="Receipt" data-view="'+e.id+'" data-i="'+i+'">'
+      : '<button data-view="'+e.id+'" data-i="'+i+'">PDF<br><span style="font-weight:400;font-size:11px;color:var(--muted)">'+esc(r.name||"")+'</span></button>').join("");
+    $("dtBody").innerHTML =
+      '<span class="tag '+(isIn?"in":"out")+'">'+(isIn?"Earnings":"Donation")+'</span>'+
+      '<div class="dtamt" style="color:'+(isIn?"var(--ink)":"var(--green)")+'">'+fmt(e.amount)+'</div>'+
+      '<div class="muted" style="font-size:14px">'+(isIn? "Adds "+fmt(round(e.amount*p))+" maaser" : "Counts toward your maaser")+(e.total?' · split of a '+fmt(e.total)+' transfer':'')+'</div>'+
+      '<dl class="dl">'+
+        row(isIn?"Source":"Paid to", '<b>'+esc(e.desc||"—")+'</b>')+
+        row("Date", esc(new Date(e.date+"T12:00").toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long",year:"numeric"})))+
+        row("Paid by", esc(e.method))+
+        row("Bank", esc(e.bank))+
+        row("Account #", esc(e.account))+
+        row("Reference", esc(e.ref))+
+        row("Full transfer", e.total?fmt(e.total):"")+
+        row(isIn?"Note":"Description", esc(e.note))+
+        row("Added", e.created? esc(new Date(e.created).toLocaleString(undefined,{day:"numeric",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"})) : "")+
+      '</dl>'+
+      (rc ? '<div style="margin-top:14px"><div class="muted" style="font-size:13px;font-weight:600">Payment proof — tap to enlarge</div><div class="dtrc">'+rc+'</div></div>' : '');
+    $("detailModal").classList.add("show");
+  }
+  function closeDetail(){ $("detailModal").classList.remove("show"); detailId=null; }
+  $("dtClose").onclick=closeDetail;
+  $("dtBody").addEventListener("click",ev=>{ const v=ev.target.closest("[data-view]"); if(!v) return; const e=entries.find(x=>x.id===v.dataset.view); if(e) openViewer(e,+v.dataset.i); });
+  $("dtEdit").onclick=()=>{ const id=detailId; closeDetail(); const b=document.createElement("button"); b.dataset.edit=id; entryClick({target:b}); };
+  $("dtDelete").onclick=()=>{
+    if(!detailDelArm){ detailDelArm=true; $("dtDelete").textContent="Tap again to delete"; $("dtDelete").className="btn danger"; return; }
+    const id=detailId; closeDetail(); if(editingId===id) resetForm(); const b=document.createElement("button"); b.dataset.del=id; entryClick({target:b});
+  };
+
   $("entriesM").addEventListener("click", entryClick);
   $("payees").addEventListener("click",e=>{
     const a=e.target.closest("[data-payee]"); if(!a) return; e.preventDefault();
@@ -974,7 +1033,8 @@
     selMonth=tr.dataset.month; render(); $("monthCard").scrollIntoView({behavior:"smooth",block:"start"});
   });
   const viewClick = ev=>{
-    const v=ev.target.closest("[data-view]"); if(!v) return;
+    const v=ev.target.closest("[data-view]");
+    if(!v){ const o=ev.target.closest("[data-open]"); if(o) openDetail(o.dataset.open); return; }
     const e=entries.find(x=>x.id===v.dataset.view); if(e) openViewer(e,+v.dataset.i);
   };
   $("mdList").addEventListener("click",viewClick); $("mdListM").addEventListener("click",viewClick);
