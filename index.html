@@ -42,6 +42,9 @@
   .grid > *{min-width:0}
   @media (max-width:760px){.g3,.g2{grid-template-columns:1fr}}
   .mob{display:none}
+  .hide-n{display:none}
+  .monthsTbl th{font-size:11px;letter-spacing:.02em;padding:8px 4px}
+  .monthsTbl td{font-size:14px;padding:9px 4px}
   .pastebox{display:none;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:11px;text-align:center;color:var(--muted);font-size:14px;background:var(--card);-webkit-user-select:text;user-select:text;caret-color:transparent}
   .pastebox:focus{outline:2px solid var(--blue);color:var(--blue)}
   @media (pointer:coarse){ .pastebox{display:block} }
@@ -277,7 +280,7 @@
       <h2>Month by month</h2>
       <div class="scroll">
         <table class="monthsTbl">
-          <thead><tr><th>Month</th><th class="num">Earned</th><th class="num hide-m">Due</th><th class="num">Given</th><th class="num">Available</th></tr></thead>
+          <thead><tr><th>Month</th><th class="num">Earned</th><th class="num hide-n">Due</th><th class="num">Given</th><th class="num">Available</th></tr></thead>
           <tbody id="months"></tbody>
         </table>
       </div>
@@ -412,7 +415,7 @@
   const monthName = k => { const [y,m]=k.split("-"); return new Date(+y,+m-1,1).toLocaleString(undefined,{month:"long",year:"numeric"}); };
   const niceDate = d => new Date(d+"T12:00").toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
   const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-  const narrow = () => { try{ return matchMedia("(max-width:600px)").matches; }catch(e){ return false; } };
+  const narrow = () => true;
   const shortMonth = k => { const [y,m]=k.split("-"); return new Date(+y,+m-1,1).toLocaleString(undefined,{month:"short"})+" ’"+y.slice(2); };
   const pct = () => (+settings.percent||10)/100;
   const round = n => Math.round(n*100)/100;
@@ -467,7 +470,7 @@
     let run = start; const rows=[];
     for(const k of keys){ const m=months[k]; run = round(run + m.earn*p - m.give); rows.push({k,m,run}); }
     $("months").innerHTML = rows.length ? rows.slice().reverse().map(r=>
-      '<tr data-month="'+r.k+'" class="'+(r.k===selMonth?"sel":"")+'"><td style="white-space:nowrap">'+(narrow()?shortMonth(r.k):monthName(r.k))+'</td><td class="num">'+fmt(r.m.earn)+'</td><td class="num hide-m" style="color:var(--gold)">'+fmt(round(r.m.earn*p))+'</td><td class="num" style="color:var(--green)">'+fmt(r.m.give)+'</td><td class="num" style="font-weight:600;color:'+(r.run>0?"var(--gold)":"var(--green)")+'">'+fmt(r.run)+'</td></tr>'
+      '<tr data-month="'+r.k+'" class="'+(r.k===selMonth?"sel":"")+'"><td style="white-space:nowrap">'+(narrow()?shortMonth(r.k):monthName(r.k))+'</td><td class="num">'+fmt(r.m.earn)+'</td><td class="num hide-n" style="color:var(--gold)">'+fmt(round(r.m.earn*p))+'</td><td class="num" style="color:var(--green)">'+fmt(r.m.give)+'</td><td class="num" style="font-weight:600;color:'+(r.run>0?"var(--gold)":"var(--green)")+'">'+fmt(r.run)+'</td></tr>'
     ).join("") : '<tr><td colspan="5" class="empty">No months yet</td></tr>';
 
     // monthly report
